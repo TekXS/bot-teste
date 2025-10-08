@@ -1,18 +1,17 @@
 import time
 import requests
 from datetime import datetime, timedelta
-from telegram import Bot
+from telegram import Bot, Update
+from telegram.ext import Updater, CommandHandler, CallbackContext
 
 # CONFIGURAÇÕES
 TELEGRAM_TOKEN = "8401280909:AAEKpzYXA5iGtKVGiNG7f6JYBD45JEWbFz8"
 CHAT_ID = "879825872"
 URL = "https://betesporte.bet.br/api/PreMatch/GetEvents?sportId=999&tournamentId=4200000001"
 
-bot = Bot(token=TELEGRAM_TOKEN)
 odds_anteriores = {}  # guarda odds antigas e eventos já vistos
-ultimo_heartbeat = None
-INTERVALO_HEARTBEAT = 2 * 60 * 60  # 2 horas em segundos
 
+# Função para buscar eventos no JSON da Betesporte
 def buscar_eventos():
     r = requests.get(URL)
     data = r.json()
@@ -38,7 +37,8 @@ def buscar_eventos():
                         })
     return eventos
 
-def verificar_alteracoes():
+# Verifica novas apostas ou odds atualizadas
+def verificar_alteracoes(bot: Bot):
     global odds_anteriores
     eventos = buscar_eventos()
 
@@ -46,7 +46,7 @@ def verificar_alteracoes():
         chave = e["evento"]
         odd_atual = e["odd"]
 
-        #1️⃣ Nova aposta
+        # Nova aposta
         if chave not in odds_anteriores:
             msg = (
                 "🏠 Betesporte - Nova Aposta\n"
@@ -58,7 +58,7 @@ def verificar_alteracoes():
             odds_anteriores[chave] = odd_atual
             continue
 
-        # 2️⃣ Odd atualizada
+        # Odd atualizada
         odd_antiga = odds_anteriores[chave]
         if odd_antiga != odd_atual:
             msg = (
@@ -70,25 +70,38 @@ def verificar_alteracoes():
             bot.send_message(chat_id=CHAT_ID, text=msg)
             odds_anteriores[chave] = odd_atual
 
-def enviar_heartbeat():
-    global ultimo_heartbeat
-    agora = datetime.now()
-    if not ultimo_heartbeat or (agora - ultimo_heartbeat).total_seconds() > INTERVALO_HEARTBEAT:
-        msg = (
-            "🏠 Betesporte - Bot Ativo\n"
-            f"⏰ Última verificação: {agora.strftime('%d/%m %H:%M')}"
-        )
-        bot.send_message(chat_id=CHAT_ID, text=msg)
-        ultimo_heartbeat = agora
+# Função chamada quando alguém envia /odds
+def comando_odds(update: Update, context: CallbackContext):
+    eventos = buscar_eventos()
+    if not eventos:
+        update.message.reply_text("Nenhuma aposta disponível no momento.")
+        return
 
+    msg = "🏠 Betesporte - Odds Disponíveis:\n\n"
+    for e in eventos:
+        msg += f"⚽️ {e['evento']}\n"
+        msg += f"🔢 Odd: {e['odd']}\n"
+        msg += f"📅 {e['data']}\n\n"
+    update.message.reply_text(msg)
+
+# Função principal
 def main():
     print("Bot da Betesporte iniciado ✅")
+    updater = Updater(token=TELEGRAM_TOKEN, use_context=True)
+    dispatcher = updater.dispatcher
+
+    # Comando /odds
+    dispatcher.add_handler(CommandHandler("odds", comando_odds))
+
+    # Inicia o bot
+    updater.start_polling()
+
+    # Loop de monitoramento de novas apostas / odds
     while True:
         try:
-            verificar_alteracoes()
-            enviar_heartbeat()
-        except Exception as err:
-            print("⚠️ Erro:", err)
+            verificar_alteracoes(updater.bot)
+        except Exception as e:
+            print("⚠️ Erro:", e)
         time.sleep(20)  # checa a cada 20 segundos
 
 if __name__ == "__main__":
