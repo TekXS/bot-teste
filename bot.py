@@ -4,12 +4,14 @@ from datetime import datetime, timedelta
 from telegram import Bot
 
 # CONFIGURAÇÕES
-TELEGRAM_TOKEN = "SEU_TOKEN_DO_BOT"
-CHAT_ID = "SEU_CHAT_ID"
+TELEGRAM_TOKEN = "8401280909:AAEKpzYXA5iGtKVGiNG7f6JYBD45JEWbFz8"
+CHAT_ID = "879825872"
 URL = "https://betesporte.bet.br/api/PreMatch/GetEvents?sportId=999&tournamentId=4200000001"
 
 bot = Bot(token=TELEGRAM_TOKEN)
 odds_anteriores = {}  # guarda odds antigas e eventos já vistos
+ultimo_heartbeat = None
+INTERVALO_HEARTBEAT = 2 * 60 * 60  # 2 horas em segundos
 
 def buscar_eventos():
     r = requests.get(URL)
@@ -68,11 +70,23 @@ def verificar_alteracoes():
             bot.send_message(chat_id=CHAT_ID, text=msg)
             odds_anteriores[chave] = odd_atual
 
+def enviar_heartbeat():
+    global ultimo_heartbeat
+    agora = datetime.now()
+    if not ultimo_heartbeat or (agora - ultimo_heartbeat).total_seconds() > INTERVALO_HEARTBEAT:
+        msg = (
+            "🏠 Betesporte - Bot Ativo\n"
+            f"⏰ Última verificação: {agora.strftime('%d/%m %H:%M')}"
+        )
+        bot.send_message(chat_id=CHAT_ID, text=msg)
+        ultimo_heartbeat = agora
+
 def main():
     print("Bot da Betesporte iniciado ✅")
     while True:
         try:
             verificar_alteracoes()
+            enviar_heartbeat()
         except Exception as err:
             print("⚠️ Erro:", err)
         time.sleep(20)  # checa a cada 20 segundos
